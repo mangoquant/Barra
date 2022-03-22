@@ -11,7 +11,7 @@ Rf_annual = 0.02
 Rf_daily = (Rf_annual+1)**(1/252)-1
 
 # 根目录
-ROOT_PATH = 'D:\\work\\实习\\衍盛\\Barra\\'
+ROOT_PATH = '*****'
 # 数据根目录
 DATA_ROOT_PATH = ROOT_PATH+'data\\'
 # 价量数据
