@@ -8,6 +8,7 @@ Created on Wed Mar  9 09:33:10 2022
 
 import os
 
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
 
@@ -151,7 +152,7 @@ if __name__ == '__main__':
 
     factor_level1 = PriceDataBase(pd.read_pickle(
         os.path.join(cfg.FACTOR_PATH, 'factor_level1.pkl')))
-    
+
     # # 分5组因子多空收益率
     # # 注：此处仅做空第一组，做多第五组，对因子的方向未做判断
     # factor_lst = ['Size', 'Beta', 'Momentum', 'Residual_Volatility',
@@ -160,12 +161,53 @@ if __name__ == '__main__':
     # for f in factor_lst:
     #     factor = factor_level1.get_table(f)
     #     Barra_ret_5q[f] = get_factor_ret(factor, ret, market_value)
+
     # Barra_ret_5q.to_pickle(os.path.join(cfg.FACTOR_RETURN, 'Barra_ret_5q.pkl'))
-    
-    
-    
-    
-    
-    
-    
-    
+    Barra_ret_5q = pd.read_pickle(os.path.join(
+        cfg.FACTOR_RETURN, 'Barra_ret_5q.pkl'))
+
+    # # 纯因子收益率
+    # datetime = factor_level1.data.index.get_level_values(
+    #     'datetime').unique().sort_values()
+    # factor_name = ['country', '光電業', '其他業', '其他電子業', '化學工業', 
+    #                '半導體業', '塑膠工業', '建材營造業', '橡膠工業', '水泥工業', 
+    #                '汽車工業', '油電燃氣業', '玻璃陶瓷', '生技醫療業', '紡織纖維', 
+    #                '航運業', '觀光事業', '貿易百貨業', '資訊服務業', '通信網路業', 
+    #                '造紙工業', '金融保險業', '鋼鐵工業', '電器電纜', '電子通路業', 
+    #                '電子零組件業', '電機機械', '電腦及週邊設備業', '食品工業', 
+    #                'Size', 'Beta', 'Momentum', 'Residual_Volatility', 
+    #                'Non-linear_Size', 'Book-to-Price', 'Liquidty', 'Growth']
+    # Barra_ret_net = pd.DataFrame(index=datetime, columns=factor_name)
+    # for i in tqdm(datetime):
+    #     # Barra因子矩阵
+    #     style = factor_level1.data.loc[i, :, :]
+    #     style.index = style.index.droplevel(0)
+    #     industry = industry_df.loc[style.index, industry_df.columns[1:]]
+    #     country = pd.DataFrame(
+    #         np.ones((style.shape[0], 1)), index=style.index, columns=['country'])
+    #     X = pd.concat([country, industry, style], axis=1).values
+    #     X[~np.isfinite(X)] = 0.
+    #     # 权重矩阵
+    #     W = np.sqrt(market_value.loc[i, style.index].values)
+    #     W = np.diag(W/W.sum())
+    #     # 约束矩阵
+    #     industry_value = industry.mul(
+    #         market_value.loc[i, style.index], axis=0).sum(axis=0)
+    #     adj_industry_weights = -1 * \
+    #         (industry_value[:-1]/industry_value[-1]).values
+    #     C = np.eye(1+industry.shape[1]+style.shape[1])
+    #     C = np.delete(C, industry.shape[1], axis=1)
+    #     C[industry.shape[1], 1:industry.shape[1]] = adj_industry_weights
+    #     # 纯因子投资组合权重矩阵
+    #     a = np.matmul(X, C)
+    #     b = np.matmul(np.matmul(a.T, W), a)
+    #     invb = np.linalg.inv(b)
+    #     omega = np.matmul(np.matmul(np.matmul(C, invb), a.T), W)
+    #     # 纯因子收益率
+    #     Barra_ret_net.loc[i, :] = np.matmul(
+    #         omega, ret.loc[i, style.index].fillna(0).values)
+
+    # Barra_ret_net.to_pickle(os.path.join(
+    #     cfg.FACTOR_RETURN, 'Barra_ret_net.pkl'))
+    Barra_ret_net = pd.read_pickle(os.path.join(
+        cfg.FACTOR_RETURN, 'Barra_ret_net.pkl'))
