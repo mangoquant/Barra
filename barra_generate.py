@@ -8,13 +8,97 @@ Created on Wed Mar  9 09:33:10 2022
 
 import os
 
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib import pyplot as plt
+from matplotlib import ticker
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
 
-from tools.barra_calculator import BarraCalculator
-from tools import *
 import configs as cfg
+from tools import *
+
+plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
+plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+
+
+def get_pos_expose(pos_data: pd.DataFrame,
+                   asset_expose: pd.DataFrame,
+                   industry_df: pd.DataFrame = None) -> pd.DataFrame:
+    """
+    获取持仓在Barra风格因子上的暴露
+
+    Parameters
+    ----------
+    pos_data : pd.DataFrame, index=(datetime, asset)
+        持仓信息，至少包含weight一列
+    asset_expose : pd.DataFrame, index=(datetime, asset), columns=style_factor
+        个股在Barra风格因子上的暴露信息
+    industry_df: pd.DataFrame, optional, index=asset, columns=industry_name
+        行业分类信息，若不为None，则返回在国家、行业和风格因子上的暴露，
+        否则，仅返回风格因子暴露
+        The default is None.
+
+    Returns
+    -------
+    pd.DataFrame
+
+    """
+    dt = asset_expose.index.get_level_values(0).unique()
+    pos_data = pos_data[dt[0]:dt[-1]]
+    datetime = pos_data.index.get_level_values(0).unique()
+    if type(industry_df) == pd.DataFrame:
+        col_names = ['country', ] + \
+            list(industry_df.columns)+list(asset_expose.columns)
+    else:
+        col_names = asset_expose.columns
+    pos_expose = pd.DataFrame(index=datetime, columns=col_names)
+
+    for i in tqdm(datetime):
+        hold = pos_data.loc[i, 'weight']
+        assets = hold.index
+        hold = hold.values.reshape(1, -1)
+
+        if type(industry_df) == pd.DataFrame:
+            country = np.ones((len(assets), 1))
+            industry = industry_df.loc[assets, :]
+            style = asset_expose.loc[(i, assets), :].fillna(0).values
+            expose = np.hstack((country, industry, style))
+        else:
+            expose = asset_expose.loc[(i, assets), :].fillna(0).values
+
+        pos_expose.loc[i, :] = np.matmul(hold, expose)
+    return pos_expose
+
+
+def get_his_q(df: pd.DataFrame,
+              min_window: int = 252) -> pd.DataFrame:
+    """
+    返回df的历史分位数
+
+    Parameters
+    ----------
+    df : pd.DataFrame, index=datetime
+        要计算的df
+    min_window : int, optional
+        计算历史分位数的最小窗口 
+        The default is 252.
+
+    Returns
+    -------
+    pd.DataFrame
+
+    """
+    datetime = df.index
+    factors = df.columns
+    df_q = pd.DataFrame(index=datetime, columns=factors)
+    for i in range(df.shape[0]):
+        if i >= min_window:
+            for f in factors:
+                his = df.loc[:datetime[i-1], f]
+                now = df.loc[datetime[i], f]
+                df_q.loc[datetime[i], f] = (his < now).sum()/i
+    return df_q
 
 
 if __name__ == '__main__':
@@ -153,29 +237,29 @@ if __name__ == '__main__':
     factor_level1 = PriceDataBase(pd.read_pickle(
         os.path.join(cfg.FACTOR_PATH, 'factor_level1.pkl')))
 
-    # # 分5组因子多空收益率
-    # # 注：此处仅做空第一组，做多第五组，对因子的方向未做判断
+    # # 分20组因子多空收益率
+    # # 注：此处仅做空第1组，做多第20组，对因子的方向未做判断
     # factor_lst = ['Size', 'Beta', 'Momentum', 'Residual_Volatility',
     #               'Non-linear_Size', 'Book-to-Price', 'Liquidty', 'Growth']
-    # Barra_ret_5q = pd.DataFrame()
+    # Barra_ret_20q = pd.DataFrame()
     # for f in factor_lst:
     #     factor = factor_level1.get_table(f)
-    #     Barra_ret_5q[f] = get_factor_ret(factor, ret, market_value)
+    #     Barra_ret_20q[f] = get_factor_ret(factor, ret, market_value, quantile=20)
 
-    # Barra_ret_5q.to_pickle(os.path.join(cfg.FACTOR_RETURN, 'Barra_ret_5q.pkl'))
-    Barra_ret_5q = pd.read_pickle(os.path.join(
-        cfg.FACTOR_RETURN, 'Barra_ret_5q.pkl'))
+    # Barra_ret_20q.to_pickle(os.path.join(cfg.FACTOR_RETURN, 'Barra_ret_20q.pkl'))
+    Barra_ret_20q = pd.read_pickle(os.path.join(
+        cfg.FACTOR_RETURN, 'Barra_ret_20q.pkl'))
 
     # # 纯因子收益率
     # datetime = factor_level1.data.index.get_level_values(
     #     'datetime').unique().sort_values()
-    # factor_name = ['country', '光電業', '其他業', '其他電子業', '化學工業', 
-    #                '半導體業', '塑膠工業', '建材營造業', '橡膠工業', '水泥工業', 
-    #                '汽車工業', '油電燃氣業', '玻璃陶瓷', '生技醫療業', '紡織纖維', 
-    #                '航運業', '觀光事業', '貿易百貨業', '資訊服務業', '通信網路業', 
-    #                '造紙工業', '金融保險業', '鋼鐵工業', '電器電纜', '電子通路業', 
-    #                '電子零組件業', '電機機械', '電腦及週邊設備業', '食品工業', 
-    #                'Size', 'Beta', 'Momentum', 'Residual_Volatility', 
+    # factor_name = ['country', '光電業', '其他業', '其他電子業', '化學工業',
+    #                '半導體業', '塑膠工業', '建材營造業', '橡膠工業', '水泥工業',
+    #                '汽車工業', '油電燃氣業', '玻璃陶瓷', '生技醫療業', '紡織纖維',
+    #                '航運業', '觀光事業', '貿易百貨業', '資訊服務業', '通信網路業',
+    #                '造紙工業', '金融保險業', '鋼鐵工業', '電器電纜', '電子通路業',
+    #                '電子零組件業', '電機機械', '電腦及週邊設備業', '食品工業',
+    #                'Size', 'Beta', 'Momentum', 'Residual_Volatility',
     #                'Non-linear_Size', 'Book-to-Price', 'Liquidty', 'Growth']
     # Barra_ret_net = pd.DataFrame(index=datetime, columns=factor_name)
     # for i in tqdm(datetime):
@@ -211,3 +295,138 @@ if __name__ == '__main__':
     #     cfg.FACTOR_RETURN, 'Barra_ret_net.pkl'))
     Barra_ret_net = pd.read_pickle(os.path.join(
         cfg.FACTOR_RETURN, 'Barra_ret_net.pkl'))
+
+    # # 20组多空分析
+    # # 持仓信息
+    # pos_data = pd.read_excel(os.path.join(
+    #     cfg.POSITION_PATH, 'positi...roup20.xlsx'), parse_dates=[0])
+    # pos_data['asset'] = pos_data['asset'].astype('str')
+    # pos_data.index = pd.MultiIndex.from_frame(pos_data[['datetime', 'asset']])
+    # # 持仓暴露
+    # pos_expose = get_pos_expose(pos_data, factor_level1.data)
+    # pos_ret = pos_expose*Barra_ret_20q.loc[pos_expose.index]
+
+    # hold_analysis = pd.DataFrame()
+    # hold_analysis['expose'] = pos_expose.stack()
+    # hold_analysis['return'] = pos_ret.stack()
+    # hold_analysis.to_pickle(os.path.join(
+    #     cfg.POSITION_PATH, 'hold_analysis_20q.pkl'))
+
+    # # 持仓分析
+    # hold_analysis = PriceDataBase(pd.read_pickle(
+    #     os.path.join(cfg.POSITION_PATH, 'hold_analysis_20q.pkl')))
+    # factor_expose = hold_analysis.get_table(
+    #     'expose').astype('float64').round(4)
+    # factor_ret = hold_analysis.get_table('return').astype('float64').round(4)
+    # factor_lst = factor_expose.columns
+    # x_label = [t.strftime('%Y-%m-%d') for t in factor_expose.index]
+    # factor_expose_q = get_his_q(factor_expose)
+    # factor_ret_q = get_his_q(factor_ret)
+    # with PdfPages(os.path.join(cfg.POSITION_PATH, 'hold_analysis_20q.pdf')) as pdf:
+    #     for f in factor_lst:
+    #         fig = plt.figure(figsize=(18, 6))
+
+    #         ax1 = fig.add_subplot(221)
+    #         ax1.bar(x_label, factor_expose[f])
+    #         ax1.xaxis.set_visible(False)
+    #         plt.xlim(-5, len(x_label)+5)
+    #         plt.grid(axis="y")
+    #         ax1.set_title('portfolio exposure on "{}" factor'.format(f))
+
+    #         ax3 = fig.add_subplot(223)
+    #         ax3.scatter(x_label, factor_expose_q[f], s=1, c='r')
+    #         ax3.xaxis.set_major_locator(
+    #             ticker.MultipleLocator(int(len(x_label)/5)))
+    #         plt.xticks(rotation=-45)
+    #         plt.xlim(-5, len(x_label)+5)
+    #         plt.grid(axis="y")
+    #         ax3.set_title(
+    #             'historical quantile of "{}" factor exposures'.format(f))
+
+    #         ax2 = fig.add_subplot(222)
+    #         ax2.plot(x_label, (1+factor_ret[f]).cumprod())
+    #         ax2.xaxis.set_visible(False)
+    #         plt.xlim(-5, len(x_label)+5)
+    #         plt.grid(axis="y")
+    #         ax2.set_title(
+    #             'portfolio cumulative return on "{}" factor'.format(f))
+
+    #         ax4 = fig.add_subplot(224)
+    #         ax4.scatter(x_label, factor_ret_q[f], s=1, c='r')
+    #         ax4.xaxis.set_major_locator(
+    #             ticker.MultipleLocator(int(len(x_label)/5)))
+    #         plt.xticks(rotation=-45)
+    #         plt.xlim(-5, len(x_label)+5)
+    #         plt.grid(axis="y")
+    #         ax4.set_title(
+    #             'historical quantile of "{}" factor return'.format(f))
+
+    #         pdf.savefig(fig)
+
+    # # 纯因子收益率分析分析
+    # # 持仓信息
+    # pos_data = pd.read_excel(os.path.join(
+    #     cfg.POSITION_PATH, 'positi...roup20.xlsx'), parse_dates=[0])
+    # pos_data['asset'] = pos_data['asset'].astype('str')
+    # pos_data.index = pd.MultiIndex.from_frame(pos_data[['datetime', 'asset']])
+    # # 持仓暴露
+    # pos_expose = get_pos_expose(
+    #     pos_data, factor_level1.data, industry_df.drop('industry', axis=1))
+    # pos_ret = pos_expose*Barra_ret_net.loc[pos_expose.index]
+
+    # hold_analysis = pd.DataFrame()
+    # hold_analysis['expose'] = pos_expose.stack()
+    # hold_analysis['return'] = pos_ret.stack()
+    # hold_analysis.to_pickle(os.path.join(
+    #     cfg.POSITION_PATH, 'hold_analysis_net.pkl'))
+
+    # 持仓分析
+    hold_analysis = PriceDataBase(pd.read_pickle(
+        os.path.join(cfg.POSITION_PATH, 'hold_analysis_net.pkl')))
+    factor_expose = hold_analysis.get_table(
+        'expose').astype('float64').round(4)
+    factor_ret = hold_analysis.get_table('return').astype('float64').round(4)
+    factor_lst = factor_expose.columns
+    x_label = [t.strftime('%Y-%m-%d') for t in factor_expose.index]
+    factor_expose_q = get_his_q(factor_expose)
+    factor_ret_q = get_his_q(factor_ret)
+    with PdfPages(os.path.join(cfg.POSITION_PATH, 'hold_analysis_net.pdf')) as pdf:
+        for f in factor_lst:
+            fig = plt.figure(figsize=(18, 6))
+
+            ax1 = fig.add_subplot(221)
+            ax1.bar(x_label, factor_expose[f])
+            ax1.xaxis.set_visible(False)
+            plt.xlim(-5, len(x_label)+5)
+            plt.grid(axis="y")
+            ax1.set_title('portfolio exposure on "{}" factor'.format(f))
+
+            ax3 = fig.add_subplot(223)
+            ax3.scatter(x_label, factor_expose_q[f], s=1, c='r')
+            ax3.xaxis.set_major_locator(
+                ticker.MultipleLocator(int(len(x_label)/5)))
+            plt.xticks(rotation=-45)
+            plt.xlim(-5, len(x_label)+5)
+            plt.grid(axis="y")
+            ax3.set_title(
+                'historical quantile of "{}" factor exposures'.format(f))
+
+            ax2 = fig.add_subplot(222)
+            ax2.plot(x_label, (1+factor_ret[f]).cumprod())
+            ax2.xaxis.set_visible(False)
+            plt.xlim(-5, len(x_label)+5)
+            plt.grid(axis="y")
+            ax2.set_title(
+                'portfolio cumulative return on "{}" factor'.format(f))
+
+            ax4 = fig.add_subplot(224)
+            ax4.scatter(x_label, factor_ret_q[f], s=1, c='r')
+            ax4.xaxis.set_major_locator(
+                ticker.MultipleLocator(int(len(x_label)/5)))
+            plt.xticks(rotation=-45)
+            plt.xlim(-5, len(x_label)+5)
+            plt.grid(axis="y")
+            ax4.set_title(
+                'historical quantile of "{}" factor return'.format(f))
+
+            pdf.savefig(fig)
